@@ -3,20 +3,6 @@ from bs4 import BeautifulSoup
 import time
 import random
 
-# Список сайтов для получения прокси
-proxy_sites = [
-    "https://www.free-proxy-list.net/",
-    "https://www.us-proxy.org/",
-    "https://www.sslproxies.org/",
-    "https://www.proxy-list.download/",
-    "https://www.socks-proxy.net/",
-    "https://www.spys.one/en/free-proxy-list/",
-    "https://www.proxynova.com/proxy-server-list/",
-    "https://www.geonames.org/faq/how-to-find-a-proxy-server.html",
-    "https://www.proxyscrape.com/free-proxy-list",
-    "https://www.freeproxy.world/"
-]
-
 # Константы
 TIMEOUT = 5
 MAX_RESPONSE_TIME = 3
@@ -27,55 +13,37 @@ USER_AGENTS = [
     "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/14.1.1 Safari/605.1.15",
     "Mozilla/5.0 (Linux; Android 10; SM-G973F) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.114 Mobile Safari/537.36",
     "Mozilla/5.0 (iPhone; CPU iPhone OS 14_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/14.0 Mobile/15E148 Safari/604.1",
-    "Mozilla/5.0 (Windows NT 6.1; WOW64; rv:89.0) Gecko/20100101 Firefox/89.0",
-    "Mozilla/5.0 (X11; Ubuntu; Linux x86_64; rv:89.0) Gecko/20100101 Firefox/89.0",
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/90.0.4430.93 Safari/537.36",
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:88.0) Gecko/20100101 Firefox/88.0",
-    "Mozilla/5.0 (Linux; Android 11; Pixel 5) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.114 Mobile Safari/537.36",
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/92.0.4515.107 Safari/537.36"
+    "Mozilla/5.0 (Windows NT 6.1; WOW64; rv:89.0) Gecko/20100101 Firefox/89.0"
 ]
 
-def get_proxies_from_site(url):
+def get_proxies_from_spys_one():
     proxies = []
+    url = "https://spys.one/en/free-proxy-list/"
+    
     try:
         headers = {'User-Agent': random.choice(USER_AGENTS)}
         response = requests.get(url, headers=headers)
         response.raise_for_status()
-        soup = BeautifulSoup(response.content, 'lxml')
+        soup = BeautifulSoup(response.content, 'html.parser')
 
-        # Пример для spys.one
-        if "spys.one" in url:
-            proxy_table = soup.find('table', class_='proxy__t')
-            if proxy_table:
-                for row in proxy_table.find_all('tr')[1:]:
-                    cols = row.find_all('td')
-                    if len(cols) >= 2:
-                        ip = cols[0].text.strip()
-                        port = cols[1].text.strip()
-                        proxy = f"{ip}:{port}"
-                        proxies.append(proxy)
-            else:
-                print(f"Таблица не найдена на странице: {url}")
+        # Ищем таблицу с прокси
+        proxy_table = soup.find('table', class_='proxy__t')
+        if proxy_table:
+            for row in proxy_table.find_all('tr')[1:]:  # Пропускаем заголовок
+                cols = row.find_all('td')
+                if len(cols) >= 2:
+                    ip = cols[0].text.strip()
+                    port = cols[1].text.strip()
+                    proxy = f"{ip}:{port}"
+                    proxies.append(proxy)
         else:
-            # Общий случай
-            proxy_table = soup.find('table')
-            if proxy_table:
-                rows = proxy_table.find_all('tr')
-                for row in rows:
-                    cols = row.find_all('td')
-                    if len(cols) >= 2:
-                        ip = cols[0].text.strip()
-                        port = cols[1].text.strip()
-                        proxy = f"{ip}:{port}"
-                        proxies.append(proxy)
-            else:
-                print(f"Таблица не найдена на странице: {url}")
+            print("Таблица с прокси не найдена.")
 
     except requests.exceptions.RequestException as e:
-        print(f"Ошибка при получении прокси из {url}: {e}")
+        print(f"Ошибка при получении прокси: {e}")
     except Exception as e:
         print(f"Ошибка при парсинге HTML: {e}")
-    
+
     return proxies
 
 def check_proxy_socks5(proxy):
@@ -97,13 +65,7 @@ def check_proxy_socks5(proxy):
         return False, None
 
 def gather_proxies():
-    all_proxies = []
-    for site in proxy_sites:
-        proxies = get_proxies_from_site(site)
-        all_proxies.extend(proxies)
-        time.sleep(random.uniform(1, 3))
-        
-    all_proxies = list(set(all_proxies))  # Удаление дубликатов
+    all_proxies = get_proxies_from_spys_one()
     good_proxies = []
     for proxy in all_proxies:
         is_good, response_time = check_proxy_socks5(proxy)
@@ -121,3 +83,6 @@ if __name__ == "__main__":
     good_proxies = gather_proxies()
     if good_proxies:
         save_proxies_to_file(good_proxies)
+        print(f"Найдено {len(good_proxies)} хороших прокси.")
+    else:
+        print("Не найдено хороших прокси.")
