@@ -1,1 +1,1 @@
-# 123
+pip install requests beautifulsoup4 lxml
