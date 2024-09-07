@@ -1,11 +1,13 @@
 import requests
-from bs4 import BeautifulSoup
 import time
 import random
+from concurrent.futures import ThreadPoolExecutor
 
 # Константы
 TIMEOUT = 5
 MAX_RESPONSE_TIME = 3
+INPUT_FILE = 'proxies.txt'
+OUTPUT_FILE = 'good_socks5_proxies.txt'
 
 # Список User-Agent для случайной выборки
 USER_AGENTS = [
@@ -16,34 +18,9 @@ USER_AGENTS = [
     "Mozilla/5.0 (Windows NT 6.1; WOW64; rv:89.0) Gecko/20100101 Firefox/89.0"
 ]
 
-def get_proxies_from_spys_one():
-    proxies = []
-    url = "https://spys.one/en/free-proxy-list/"
-    
-    try:
-        headers = {'User-Agent': random.choice(USER_AGENTS)}
-        response = requests.get(url, headers=headers)
-        response.raise_for_status()
-        soup = BeautifulSoup(response.content, 'html.parser')
-
-        # Ищем таблицу с прокси
-        proxy_table = soup.find('table', class_='proxy__t')
-        if proxy_table:
-            for row in proxy_table.find_all('tr')[1:]:  # Пропускаем заголовок
-                cols = row.find_all('td')
-                if len(cols) >= 2:
-                    ip = cols[0].text.strip()
-                    port = cols[1].text.strip()
-                    proxy = f"{ip}:{port}"
-                    proxies.append(proxy)
-        else:
-            print("Таблица с прокси не найдена.")
-
-    except requests.exceptions.RequestException as e:
-        print(f"Ошибка при получении прокси: {e}")
-    except Exception as e:
-        print(f"Ошибка при парсинге HTML: {e}")
-
+def read_proxies_from_file(file_path):
+    with open(file_path, 'r') as file:
+        proxies = [line.strip() for line in file if line.strip()]
     return proxies
 
 def check_proxy_socks5(proxy):
@@ -52,37 +29,40 @@ def check_proxy_socks5(proxy):
             'http': f'socks5://{proxy}',
             'https': f'socks5://{proxy}'
         }
+        headers = {'User-Agent': random.choice(USER_AGENTS)}
         start_time = time.time()
-        response = requests.get('https://httpbin.org/ip', proxies=proxies, timeout=TIMEOUT)
+        response = requests.get('https://httpbin.org/ip', proxies=proxies, headers=headers, timeout=TIMEOUT)
         response_time = time.time() - start_time
 
         if response.status_code == 200 and response_time <= MAX_RESPONSE_TIME:
-            return True, response_time
+            return proxy, response_time
         else:
-            return False, response_time
-    except requests.exceptions.RequestException as e:
-        print(f"Ошибка при проверке прокси {proxy}: {e}")
-        return False, None
+            return None, response_time
+    except requests.exceptions.RequestException:
+        return None, None
 
-def gather_proxies():
-    all_proxies = get_proxies_from_spys_one()
-    good_proxies = []
-    for proxy in all_proxies:
-        is_good, response_time = check_proxy_socks5(proxy)
-        if is_good:
-            good_proxies.append(proxy)
-
-    return good_proxies
-
-def save_proxies_to_file(proxies, filename='good_socks5_proxies.txt'):
+def save_proxies_to_file(proxies, filename):
     with open(filename, 'w') as file:
         for proxy in proxies:
             file.write(f"{proxy}\n")
 
-if __name__ == "__main__":
-    good_proxies = gather_proxies()
+def main():
+    proxies = read_proxies_from_file(INPUT_FILE)
+    good_proxies = []
+
+    with ThreadPoolExecutor(max_workers=10) as executor:
+        results = executor.map(check_proxy_socks5, proxies)
+
+    for proxy, response_time in results:
+        if proxy:
+            good_proxies.append(proxy)
+            print(f"Valid proxy: {proxy} with response time: {response_time:.2f} seconds")
+
     if good_proxies:
-        save_proxies_to_file(good_proxies)
+        save_proxies_to_file(good_proxies, OUTPUT_FILE)
         print(f"Найдено {len(good_proxies)} хороших прокси.")
     else:
         print("Не найдено хороших прокси.")
+
+if __name__ == "__main__":
+    main()
